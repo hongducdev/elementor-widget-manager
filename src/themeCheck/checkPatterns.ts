@@ -80,6 +80,13 @@ export const BAD_THINGS_PATTERNS: CheckPattern[] = [
         severity: "warning",
         category: "security",
     },
+    {
+        pattern: /flaticon/i,
+        message:
+            "Flaticon không tương thích với GPL license. Sử dụng icon từ nguồn GPL-compatible",
+        severity: "error",
+        category: "required",
+    },
 ];
 
 /**
@@ -89,14 +96,21 @@ export const ESCAPING_PATTERNS: CheckPattern[] = [
     {
         pattern: /echo\s+\$[a-zA-Z_][a-zA-Z0-9_]*(?!\s*\))/,
         message:
-            "Tất cả dữ liệu động phải được escape. Sử dụng esc_html(), esc_attr(), hoặc esc_url()",
-        severity: "warning",
+            "Biến động cần được escape. Nếu biến chứa HTML đã escape sẵn, bỏ qua cảnh báo này",
+        severity: "info",
         category: "escaping",
     },
     {
         pattern: /<\?=\s*\$[a-zA-Z_][a-zA-Z0-9_]*/,
         message:
             "Thẻ echo ngắn với biến chưa escape. Sử dụng esc_html() hoặc esc_attr()",
+        severity: "warning",
+        category: "escaping",
+    },
+    {
+        pattern: />\s*<\?php\s+echo\s+esc_attr\(/,
+        message:
+            "esc_attr() chỉ dùng TRONG HTML attributes. Sử dụng esc_html() giữa HTML tags",
         severity: "warning",
         category: "escaping",
     },
@@ -332,6 +346,12 @@ export const SCRIPT_STYLE_PATTERNS: CheckPattern[] = [
         pattern: /<link[^>]*rel=['"]stylesheet['"]/i,
         message:
             "Phát hiện thẻ <link> hard-coded. Sử dụng wp_enqueue_style() thay thế",
+        severity: "warning",
+        category: "best-practice",
+    },
+    {
+        pattern: /role\s*=\s*['"]search['"]/i,
+        message: "Sử dụng get_search_form() thay vì hard-code search form",
         severity: "warning",
         category: "best-practice",
     },

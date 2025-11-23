@@ -138,6 +138,19 @@ export function activate(context: vscode.ExtensionContext) {
         themeCheckTreeProvider
     );
 
+    // Register command to scan theme
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "elementor-widget-manager.scanTheme",
+            async () => {
+                await themeCheckProvider.scanWorkspace();
+                vscode.window.showInformationMessage(
+                    "Đã hoàn thành quét theme!"
+                );
+            }
+        )
+    );
+
     // Register command to open issue
     context.subscriptions.push(
         vscode.commands.registerCommand(
@@ -150,8 +163,6 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const filePath = vscode.Uri.joinPath(
                     workspaceFolder.uri,
-                    "elements",
-                    "widgets",
                     issue.file
                 );
 

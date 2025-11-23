@@ -3,7 +3,7 @@
     "displayName": "Elementor Widget Manager",
     "publisher": "pixelart",
     "description": "Manage Elementor widgets in your theme",
-    "version": "0.4.0",
+    "version": "0.4.2",
     "engines": {
         "vscode": "^1.80.0"
     },

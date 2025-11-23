@@ -113,6 +113,57 @@ export class EnvatoThemeCheckProvider {
     }
 
     /**
+     * Scan all PHP files in the workspace
+     */
+    public async scanWorkspace(): Promise<void> {
+        if (!this.enabled) {
+            return;
+        }
+
+        const files = await vscode.workspace.findFiles(
+            "**/*.php",
+            "**/node_modules/**"
+        );
+
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: "Đang quét theme...",
+                cancellable: true,
+            },
+            async (progress, token) => {
+                const total = files.length;
+                let processed = 0;
+
+                for (const file of files) {
+                    if (token.isCancellationRequested) {
+                        break;
+                    }
+
+                    const relativePath = vscode.workspace.asRelativePath(file);
+                    progress.report({
+                        message: `${processed}/${total} - ${relativePath}`,
+                        increment: (1 / total) * 100,
+                    });
+
+                    try {
+                        const document =
+                            await vscode.workspace.openTextDocument(file);
+                        this.scan(document);
+                    } catch (error) {
+                        console.error(
+                            `Error scanning file ${file.fsPath}:`,
+                            error
+                        );
+                    }
+
+                    processed++;
+                }
+            }
+        );
+    }
+
+    /**
      * Enable/disable the provider
      */
     public setEnabled(enabled: boolean): void {
