@@ -3,7 +3,7 @@
     "displayName": "Elementor Widget Manager",
     "publisher": "pixelart",
     "description": "Manage Elementor widgets in your theme",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "engines": {
         "vscode": "^1.80.0"
     },
@@ -29,6 +29,10 @@
                 {
                     "id": "elementorWidgets",
                     "name": "Widgets"
+                },
+                {
+                    "id": "themeCheckIssues",
+                    "name": "Lỗi Theme Check"
                 }
             ]
         },
