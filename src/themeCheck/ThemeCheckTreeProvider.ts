@@ -2,8 +2,9 @@ import * as vscode from "vscode";
 import * as path from "path";
 
 interface ThemeCheckIssue {
-    file: string;
+    uri: vscode.Uri;
     line: number;
+    column: number;
     message: string;
     severity: "error" | "warning" | "info";
     category: string;
@@ -21,13 +22,26 @@ class ThemeCheckItem extends vscode.TreeItem {
         super(label, collapsibleState);
 
         if (issue) {
-            this.tooltip = `${issue.file}:${issue.line}\n${issue.message}`;
-            this.description = `Dòng ${issue.line}`;
+            const fileName = path.basename(issue.uri.fsPath);
+            this.tooltip = `${fileName}:${issue.line}\n${issue.message}`;
+            this.description = `Line ${issue.line}`;
             this.iconPath = this.getIcon(issue.severity);
+
+            // Use direct command to open file at position
             this.command = {
-                command: "elementor-widget-manager.openIssue",
-                title: "Mở Lỗi",
-                arguments: [issue],
+                command: "vscode.open",
+                title: "Open Issue",
+                arguments: [
+                    issue.uri,
+                    {
+                        selection: new vscode.Range(
+                            issue.line - 1,
+                            issue.column,
+                            issue.line - 1,
+                            issue.column
+                        ),
+                    },
+                ],
             };
         }
     }
@@ -81,14 +95,15 @@ export class ThemeCheckTreeProvider
         this.issues.clear();
 
         this.diagnosticCollection.forEach((uri, diagnostics) => {
-            const fileName = path.basename(uri.fsPath);
             const fileIssues: ThemeCheckIssue[] = [];
 
             for (const diagnostic of diagnostics) {
-                if (diagnostic.source === "Kiểm Tra Theme Envato") {
+                // Match the source name from EnvatoThemeCheckProvider
+                if (diagnostic.source === "Envato Theme Check") {
                     fileIssues.push({
-                        file: fileName,
+                        uri: uri,
                         line: diagnostic.range.start.line + 1,
+                        column: diagnostic.range.start.character,
                         message: diagnostic.message,
                         severity: this.getSeverityString(diagnostic.severity),
                         category: diagnostic.code as string,
@@ -127,7 +142,7 @@ export class ThemeCheckTreeProvider
             if (this.issues.size === 0) {
                 return Promise.resolve([
                     new ThemeCheckItem(
-                        "✓ Không có lỗi",
+                        "✓ No issues found",
                         vscode.TreeItemCollapsibleState.None
                     ),
                 ]);
@@ -142,7 +157,7 @@ export class ThemeCheckTreeProvider
                     (i) => i.severity === "warning"
                 ).length;
 
-                const label = `${fileName} (${errorCount} lỗi, ${warningCount} cảnh báo)`;
+                const label = `${fileName} (${errorCount} errors, ${warningCount} warnings)`;
                 const item = new ThemeCheckItem(
                     label,
                     vscode.TreeItemCollapsibleState.Expanded

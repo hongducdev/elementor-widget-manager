@@ -42,6 +42,8 @@ export class EnvatoThemeCheckProvider {
         pattern: CheckPattern,
         diagnostics: vscode.Diagnostic[]
     ): void {
+        const relativePath = vscode.workspace.asRelativePath(document.uri);
+
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             const line = lines[lineIndex];
             const matches = line.matchAll(new RegExp(pattern.pattern, "g"));
@@ -58,13 +60,17 @@ export class EnvatoThemeCheckProvider {
                 );
                 const range = new vscode.Range(startPos, endPos);
 
+                // Shorter message for better UX
+                const lineNumber = lineIndex + 1;
+                const enhancedMessage = `${pattern.message} [${relativePath}:${lineNumber}]`;
+
                 const diagnostic = new vscode.Diagnostic(
                     range,
-                    pattern.message,
+                    enhancedMessage,
                     this.getSeverity(pattern.severity)
                 );
 
-                diagnostic.source = "Kiểm Tra Theme Envato";
+                diagnostic.source = "Envato Theme Check";
                 diagnostic.code = pattern.category;
 
                 // Add related information if replacement exists
@@ -72,7 +78,7 @@ export class EnvatoThemeCheckProvider {
                     diagnostic.relatedInformation = [
                         new vscode.DiagnosticRelatedInformation(
                             new vscode.Location(document.uri, range),
-                            `Đề xuất thay thế: ${pattern.replacement}`
+                            `Suggested replacement: ${pattern.replacement}`
                         ),
                     ];
                 }
@@ -125,6 +131,20 @@ export class EnvatoThemeCheckProvider {
             "**/node_modules/**"
         );
 
+        // Debug logging
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0];
+        console.log("=== Envato Theme Check: Workspace Scan Started ===");
+        console.log(
+            "Workspace Root:",
+            workspaceRoot?.uri.fsPath || "No workspace"
+        );
+        console.log("PHP Files Found:", files.length);
+
+        // Global state for workspace scan
+        const textDomains = new Set<string>();
+        const foundFeatures = new Set<string>();
+        let mainFileUri: vscode.Uri | undefined;
+
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
@@ -140,6 +160,14 @@ export class EnvatoThemeCheckProvider {
                         break;
                     }
 
+                    // Identify functions.php or style.css as main file for global errors
+                    if (
+                        file.path.endsWith("functions.php") ||
+                        (!mainFileUri && file.path.endsWith("style.css"))
+                    ) {
+                        mainFileUri = file;
+                    }
+
                     const relativePath = vscode.workspace.asRelativePath(file);
                     progress.report({
                         message: `${processed}/${total} - ${relativePath}`,
@@ -149,7 +177,38 @@ export class EnvatoThemeCheckProvider {
                     try {
                         const document =
                             await vscode.workspace.openTextDocument(file);
+                        const text = document.getText();
+
+                        // Scan for local issues (Prohibited patterns)
                         this.scan(document);
+
+                        // Collect text domains
+                        const domainMatches = text.matchAll(
+                            /(?:_e|__|esc_html__|esc_attr__|esc_html_e|esc_attr_e)\s*\(\s*['"][^'"]+['"]\s*,\s*['"]([^'"]+)['"]\s*\)/g
+                        );
+                        for (const match of domainMatches) {
+                            textDomains.add(match[1]);
+                        }
+
+                        // Collect found features (Recommended & Required)
+                        const {
+                            RECOMMENDED_FEATURES,
+                            REQUIRED_PATTERNS,
+                        } = require("./checkPatterns");
+
+                        // Check Recommended
+                        for (const feature of RECOMMENDED_FEATURES) {
+                            if (feature.pattern.test(text)) {
+                                foundFeatures.add(feature.message);
+                            }
+                        }
+
+                        // Check Required
+                        for (const feature of REQUIRED_PATTERNS) {
+                            if (new RegExp(feature.pattern).test(text)) {
+                                foundFeatures.add(feature.message);
+                            }
+                        }
                     } catch (error) {
                         console.error(
                             `Error scanning file ${file.fsPath}:`,
@@ -158,6 +217,198 @@ export class EnvatoThemeCheckProvider {
                     }
 
                     processed++;
+                }
+
+                // Report global issues
+                if (mainFileUri) {
+                    const globalDiagnostics: vscode.Diagnostic[] = [];
+
+                    // Check multiple text domains
+                    if (textDomains.size > 1) {
+                        const domains = Array.from(textDomains).join(", ");
+                        const message = `WARNING: More than one text-domain is being used in this theme. The domains found are: ${domains}.`;
+                        globalDiagnostics.push(
+                            new vscode.Diagnostic(
+                                new vscode.Range(0, 0, 0, 0),
+                                message,
+                                vscode.DiagnosticSeverity.Warning
+                            )
+                        );
+                    }
+
+                    const {
+                        RECOMMENDED_FEATURES,
+                        REQUIRED_PATTERNS,
+                    } = require("./checkPatterns");
+
+                    // Check missing Recommended features
+                    for (const feature of RECOMMENDED_FEATURES) {
+                        if (!foundFeatures.has(feature.message)) {
+                            globalDiagnostics.push(
+                                new vscode.Diagnostic(
+                                    new vscode.Range(0, 0, 0, 0),
+                                    feature.message,
+                                    vscode.DiagnosticSeverity.Information
+                                )
+                            );
+                        }
+                    }
+
+                    // Check missing Required features
+                    for (const feature of REQUIRED_PATTERNS) {
+                        if (!foundFeatures.has(feature.message)) {
+                            globalDiagnostics.push(
+                                new vscode.Diagnostic(
+                                    new vscode.Range(0, 0, 0, 0),
+                                    feature.message,
+                                    vscode.DiagnosticSeverity.Error
+                                )
+                            );
+                        }
+                    }
+
+                    // File Existence Checks
+                    const workspaceRoot =
+                        vscode.workspace.workspaceFolders?.[0]?.uri;
+                    if (workspaceRoot) {
+                        // Check for screenshot
+                        const screenshotPng = vscode.Uri.joinPath(
+                            workspaceRoot,
+                            "screenshot.png"
+                        );
+                        const screenshotJpg = vscode.Uri.joinPath(
+                            workspaceRoot,
+                            "screenshot.jpg"
+                        );
+                        try {
+                            await vscode.workspace.fs.stat(screenshotPng);
+                        } catch {
+                            try {
+                                await vscode.workspace.fs.stat(screenshotJpg);
+                            } catch {
+                                globalDiagnostics.push(
+                                    new vscode.Diagnostic(
+                                        new vscode.Range(0, 0, 0, 0),
+                                        "REQUIRED: Screenshot is missing! Add a screenshot.png or screenshot.jpg.",
+                                        vscode.DiagnosticSeverity.Error
+                                    )
+                                );
+                            }
+                        }
+
+                        // Check for license file
+                        const license = vscode.Uri.joinPath(
+                            workspaceRoot,
+                            "LICENSE"
+                        );
+                        const licenseTxt = vscode.Uri.joinPath(
+                            workspaceRoot,
+                            "LICENSE.txt"
+                        );
+                        try {
+                            await vscode.workspace.fs.stat(license);
+                        } catch {
+                            try {
+                                await vscode.workspace.fs.stat(licenseTxt);
+                            } catch {
+                                globalDiagnostics.push(
+                                    new vscode.Diagnostic(
+                                        new vscode.Range(0, 0, 0, 0),
+                                        "REQUIRED: License file is missing! Add a LICENSE or LICENSE.txt file.",
+                                        vscode.DiagnosticSeverity.Error
+                                    )
+                                );
+                            }
+                        }
+
+                        // Check for readme
+                        const readme = vscode.Uri.joinPath(
+                            workspaceRoot,
+                            "readme.txt"
+                        );
+                        try {
+                            await vscode.workspace.fs.stat(readme);
+                        } catch {
+                            globalDiagnostics.push(
+                                new vscode.Diagnostic(
+                                    new vscode.Range(0, 0, 0, 0),
+                                    "RECOMMENDED: readme.txt is missing.",
+                                    vscode.DiagnosticSeverity.Information
+                                )
+                            );
+                        }
+
+                        // Check style.css headers
+                        const styleCss = vscode.Uri.joinPath(
+                            workspaceRoot,
+                            "style.css"
+                        );
+                        try {
+                            const styleDoc =
+                                await vscode.workspace.openTextDocument(
+                                    styleCss
+                                );
+                            const styleText = styleDoc.getText();
+                            const requiredHeaders = [
+                                "Theme Name:",
+                                "Description:",
+                                "Author:",
+                                "Version:",
+                                "License:",
+                                "License URI:",
+                                "Text Domain:",
+                            ];
+
+                            for (const header of requiredHeaders) {
+                                if (!styleText.includes(header)) {
+                                    globalDiagnostics.push(
+                                        new vscode.Diagnostic(
+                                            new vscode.Range(0, 0, 0, 0),
+                                            `REQUIRED: style.css is missing required header: ${header}`,
+                                            vscode.DiagnosticSeverity.Error
+                                        )
+                                    );
+                                }
+                            }
+
+                            // Check for Tested up to
+                            if (!styleText.includes("Tested up to:")) {
+                                globalDiagnostics.push(
+                                    new vscode.Diagnostic(
+                                        new vscode.Range(0, 0, 0, 0),
+                                        "RECOMMENDED: style.css should include 'Tested up to:' header.",
+                                        vscode.DiagnosticSeverity.Information
+                                    )
+                                );
+                            }
+                        } catch (error) {
+                            globalDiagnostics.push(
+                                new vscode.Diagnostic(
+                                    new vscode.Range(0, 0, 0, 0),
+                                    "REQUIRED: style.css is missing!",
+                                    vscode.DiagnosticSeverity.Error
+                                )
+                            );
+                        }
+                    }
+
+                    // Append to existing diagnostics of main file
+                    const existing =
+                        this.diagnosticCollection.get(mainFileUri) || [];
+                    this.diagnosticCollection.set(mainFileUri, [
+                        ...existing,
+                        ...globalDiagnostics,
+                    ]);
+
+                    // Debug summary
+                    console.log("=== Scan Summary ===");
+                    console.log("Text Domains Found:", Array.from(textDomains));
+                    console.log("Features Found:", foundFeatures.size);
+                    console.log(
+                        "Global Diagnostics:",
+                        globalDiagnostics.length
+                    );
+                    console.log("=== Scan Complete ===");
                 }
             }
         );

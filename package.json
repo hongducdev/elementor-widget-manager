@@ -3,7 +3,7 @@
     "displayName": "Elementor Widget Manager",
     "publisher": "pixelart",
     "description": "Manage Elementor widgets in your theme",
-    "version": "0.4.2",
+    "version": "0.5.1",
     "engines": {
         "vscode": "^1.80.0"
     },
@@ -65,6 +65,12 @@
                 "command": "elementor-widget-manager.openEiconBrowser",
                 "title": "Browse Elementor Icons",
                 "category": "Elementor"
+            },
+            {
+                "command": "elementor-widget-manager.scanTheme",
+                "title": "Scan Theme for Issues",
+                "category": "Elementor",
+                "icon": "$(refresh)"
             }
         ],
         "menus": {
@@ -77,6 +83,11 @@
                 {
                     "command": "elementor-widget-manager.createWidget",
                     "when": "view == elementorWidgets",
+                    "group": "navigation"
+                },
+                {
+                    "command": "elementor-widget-manager.scanTheme",
+                    "when": "view == themeCheckIssues",
                     "group": "navigation"
                 }
             ]
